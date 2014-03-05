@@ -1,24 +1,66 @@
 (ns geonames.geocoder
-  (:require [clj-http.client :as client])
-  (:use [clojure.data.json :only (read-str)]
-        [clojure.string :only (blank? lower-case join)]))
+  (:require [cheshire.core :refer [parse-string]]
+            [clojure.core.async :as a]
+            [clojure.string :refer [blank? lower-case join]]
+            [org.httpkit.client :as client]
+            [schema.core :as s])
+  (:import [clojure.core.async.impl.protocols ReadPort]))
+
+;; ## Schemas
+
+(def Channel
+  "Friendlier alias for a Clojure channel."
+  ReadPort)
+
+(def Endpoint
+  "All valid endpoints, as described at http://www.geonames.org/export/ws-overview.html."
+  s/Str)
+
+(s/defschema Location
+  {:latitude s/Num
+   :longitude s/Num})
 
 (def ^:dynamic *base-url* "http://ws.geonames.org")
 (def ^:dynamic *key* "demo")
 
-(defn request [endpoint & [query-params]]
-  (let [read-json #(read-str %1 :key-fn keyword)]
-    (->> (client/request
-          {:url (str *base-url* "/" endpoint)
-           :method :get
-           :query-params (assoc query-params :key *key*)})
-         :body read-json :geonames)))
+(s/defn request :- Channel
+  ([endpoint :- Endpoint]
+     (request endpoint {}))
+  ([endpoint query-params]
+     (let [c (a/chan)]
+       (client/get
+        (str *base-url* "/" endpoint)
+        {:query-params (assoc query-params :username *key*)}
+        (fn [{:keys [body]}]
+          (a/put! c (parse-string body keyword))
+          (a/close! c)))
+       c)))
 
-(defn find-nearby [location & {:as options}]
-  (request "findNearbyJSON" (assoc options :lat (:latitude location) :lng (:longitude location))))
+(defmacro with-key
+  "Evaluate `body` with *key* bound to `key`."
+  [key & body] `(binding [*key* ~key] ~@body))
 
-(defn find-nearby-place-name [location & {:as options}]
-  (request "findNearbyPlaceNameJSON" (assoc options :lat (:latitude location) :lng (:longitude location))))
+(s/defn merge-options :-  {:lat s/Num
+                           :lng s/Num
+                           s/Any s/Any}
+  [location :- Location opts]
+  (-> (apply hash-map opts)
+      (assoc :lat (:latitude location)
+             :lng (:longitude location))))
+
+(s/defn find-nearby :- Channel
+  [location :- Location & opts]
+  (->> (request "findNearbyJSON" (merge-options location opts))
+       (a/map< :geonames)))
+
+(s/defn find-nearby-place-name :- Channel
+  [location :- Location & opts]
+  (->> (request "findNearbyPlaceNameJSON" (merge-options location opts))
+       (a/map< :geonames)))
+
+(s/defn timezone :- Channel
+  [location :- Location & opts]
+  (request "timezoneJSON" (merge-options location opts)))
 
 (defn formatted-address
   "Returns the formatted address of the result."
@@ -26,7 +68,3 @@
   (let [address (join ", " (remove blank? [(:name result) (:adminName1 result) (:countryName result)]))]
     (if-not (blank? address)
       address)))
-
-(defmacro with-key
-  "Evaluate `body` with *key* bound to `key`."
-  [key & body] `(binding [*key* ~key] ~@body))

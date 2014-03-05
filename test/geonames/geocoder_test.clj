@@ -1,9 +1,10 @@
 (ns geonames.geocoder-test
   (:use clojure.test
-        geonames.geocoder))
+        geonames.geocoder)
+  (:require [clojure.core.async :refer [<!!]]))
 
 (deftest test-find-nearby
-  (let [places (find-nearby {:latitude 40.463667 :longitude -3.74922})]
+  (let [places (<!! (find-nearby {:latitude 40.463667 :longitude -3.74922}))]
     (is (= 1 (count places)))
     (let [place (first places)]
       (is (= "-3.752" (:lng place)))
@@ -23,7 +24,7 @@
       (is (= "golf course" (:fcodeName place))))))
 
 (deftest test-find-nearby-place-name
-  (let [places (find-nearby-place-name {:latitude 40.463667 :longitude -3.74922})]
+  (let [places (<!! (find-nearby-place-name {:latitude 40.463667 :longitude -3.74922}))]
     (is (= 1 (count places)))
     (let [place (first places)]
       (is (= "-3.71667" (:lng place)))
