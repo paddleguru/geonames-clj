@@ -1,6 +1,6 @@
-(defproject geonames "0.6.7-SNAPSHOT"
+(defproject paddleguru/geonames "0.7.0"
   :description "Clojure API for GeoNames."
-  :url "https://github.com/r0man/geonames-clj"
+  :url "https://github.com/paddleguru/geonames-clj"
   :min-lein-version "2.0.0"
   :author "Roman Scherer"
   :license {:name "Eclipse Public License"
